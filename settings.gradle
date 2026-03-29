@@ -10,8 +10,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        jcenter();
+        maven { url "https://api.xposed.info/" }
+        jcenter()
     }
 }
-rootProject.name = "PhantomMic"
+rootProject.name = "PhantomPad"
 include ':app'

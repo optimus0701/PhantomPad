@@ -31,6 +31,10 @@ jobject j_phantomManager;
 JavaVM* JVM;
 PhantomBridge* g_phantomBridge;
 
+// Forward declarations
+bool attach_env(JNIEnv** env);
+void detach_env(bool attached);
+
 HookFunType hook_func;
 UnhookFunType unhook_func;
 
@@ -46,6 +50,26 @@ int32_t  obtainBuffer_hook(void* v0, void* v1, void* v2, void* v3, void* v4) {
     size_t frameSize = size / frameCount;
     char* raw = * (char**) ((uintptr_t) v1 + sizeof(size_t) * 2);
 
+    if (g_phantomBridge != nullptr) {
+        // Dynamically calculate channel count since WebRTC bypasses AudioRecord::set
+        // 16-bit PCM = 2 bytes per sample. So frameSize 2 = Mono, 4 = Stereo.
+        int channelCount = (frameSize == 2) ? 1 : 2;
+        int sampleRate = 48000; // WebRTC standard for high quality
+        
+        // Only update on the first few frames to avoid JNI overhead on every buffer
+        if (acc_frame_count == 0) {
+            JNIEnv* env = nullptr;
+            bool attached = attach_env(&env);
+            if (env != nullptr) {
+                // channelMask: 16 = Mono, 12 = Stereo
+                uint32_t channelMask = (channelCount == 1) ? 16 : 12;
+                g_phantomBridge->update_audio_format(env, sampleRate, 1 /* ENCODING_PCM_16BIT */, channelMask);
+                LOGI("Dynamic format detected -> %dHz %d channels, notifying Java Resampler", sampleRate, channelCount);
+            }
+            detach_env(attached);
+        }
+    }
+
     if (g_phantomBridge->overwrite_buffer(raw, size) && need_log > 0) {
         LOGI("Overwritten data");
     }
@@ -60,14 +84,36 @@ int32_t  obtainBuffer_hook(void* v0, void* v1, void* v2, void* v3, void* v4) {
     return status;
 }
 
+bool attach_env(JNIEnv** env) {
+    if (JVM == nullptr) return false;
+    int getEnvStat = JVM->GetEnv((void**)env, JNI_VERSION_1_6);
+    if (getEnvStat == JNI_EDETACHED) {
+        if (JVM->AttachCurrentThread(env, nullptr) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void detach_env(bool attached) {
+    if (attached && JVM != nullptr) {
+        JVM->DetachCurrentThread();
+    }
+}
+
 void (*stop_backup)(void*);
 void  stop_hook(void* thiz) {
     stop_backup(thiz);
 
-    JNIEnv* env;
-    JVM->AttachCurrentThread(&env, nullptr);
+    JNIEnv* env = nullptr;
+    bool attached = attach_env(&env);
+    
     LOGI("AudioRecord::stop()");
-    g_phantomBridge->unload(env);
+    if (env != nullptr && g_phantomBridge != nullptr) {
+        g_phantomBridge->unload(env);
+    }
+    
+    detach_env(attached);
 }
 
 int32_t (*set_backup)(void* thiz, int32_t inputSource, uint32_t sampleRate, uint32_t format,
@@ -89,12 +135,18 @@ int32_t set_hook(void* thiz, int32_t inputSource, uint32_t sampleRate, uint32_t 
                                 selectedDeviceId, selectedMicDirection, microphoneFieldDimension,
                                 maxSharedAudioHistoryMs);
 
-    LOGI("AudioRecord::set(...): %d", result);
+    LOGI("AudioRecord::set request -> SampleRate: %d, Format: %d, ChannelMask: %d, Result: %d", 
+         sampleRate, format, channelMask, result);
 
-    JNIEnv* env;
-    JVM->AttachCurrentThread(&env, nullptr);
-    g_phantomBridge->update_audio_format(env, sampleRate, format, channelMask);
-    g_phantomBridge->load(env);
+    JNIEnv* env = nullptr;
+    bool attached = attach_env(&env);
+    
+    if (env != nullptr && g_phantomBridge != nullptr) {
+        g_phantomBridge->update_audio_format(env, sampleRate, format, channelMask);
+        g_phantomBridge->load(env);
+    }
+    
+    detach_env(attached);
 
     return result;
 }
@@ -124,7 +176,7 @@ NativeOnModuleLoaded native_init(const NativeAPIEntries *entries) {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_tn_amin_phantom_1mic_PhantomManager_nativeHook(JNIEnv *env, jobject thiz) {
+Java_com_optimus0701_phantompad_PhantomManager_nativeHook(JNIEnv *env, jobject thiz) {
     j_phantomManager = env->NewGlobalRef(thiz);
     g_phantomBridge = new PhantomBridge(j_phantomManager);
 
@@ -146,7 +198,23 @@ Java_tn_amin_phantom_1mic_PhantomManager_nativeHook(JNIEnv *env, jobject thiz) {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_tn_amin_phantom_1mic_audio_AudioMaster_onBufferChunkLoaded(JNIEnv *env, jobject thiz,
+Java_com_optimus0701_phantompad_PhantomManager_nativeClearBuffer(JNIEnv *env, jobject thiz) {
+    if (g_phantomBridge != nullptr) {
+        g_phantomBridge->nativeClearBuffer();
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetMixAudio(JNIEnv *env, jobject thiz, jboolean mix_audio) {
+    if (g_phantomBridge != nullptr) {
+        g_phantomBridge->set_mix_audio(mix_audio);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_audio_AudioMaster_onBufferChunkLoaded(JNIEnv *env, jobject thiz,
                                                                 jbyteArray buffer_chunk) {
     jbyte* buffer = env->GetByteArrayElements(buffer_chunk, nullptr);
     int size = env->GetArrayLength(buffer_chunk);
@@ -157,6 +225,12 @@ Java_tn_amin_phantom_1mic_audio_AudioMaster_onBufferChunkLoaded(JNIEnv *env, job
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_tn_amin_phantom_1mic_audio_AudioMaster_onLoadDone(JNIEnv *env, jobject thiz) {
+Java_com_optimus0701_phantompad_audio_AudioMaster_onLoadDone(JNIEnv *env, jobject thiz) {
     g_phantomBridge->on_load_done();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_audio_AudioMaster_nativeStartLoading(JNIEnv *env, jobject thiz) {
+    g_phantomBridge->start_loading();
 }

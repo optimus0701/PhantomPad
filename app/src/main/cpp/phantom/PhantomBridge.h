@@ -6,6 +6,7 @@
 #define PHANTOMMIC_PHANTOMBRIDGE_H
 
 #include <jni.h>
+#include <atomic>
 
 class PhantomBridge {
 public:
@@ -14,6 +15,7 @@ public:
     void update_audio_format(JNIEnv* env, int sampleRate, int audioFormat, int channelMask);
 
     void load(JNIEnv* env);
+    void start_loading();
 
     void on_buffer_chunk_loaded(jbyte* buffer, jsize size);
 
@@ -23,16 +25,30 @@ public:
 
     void unload(JNIEnv *env);
 
+    void nativeClearBuffer();
+
+    void set_mix_audio(bool mix);
+
 private:
+    void mix_or_copy(char* dst_raw, const char* src_raw, int size, bool mix);
+
     jobject j_phantomManager;
 
-    bool m_buffer_loaded = false;
-    int m_buffer_size = 16384;
-    int m_buffer_write_position = 0;
-    int m_buffer_read_position = 0;
+    std::atomic<bool> m_playing_live{false};
+    std::atomic<bool> m_buffer_loaded{false};
+    std::atomic<bool> m_loading_active{false};
+    int m_buffer_size = 4 * 1024 * 1024; // 4MB
+    std::atomic<long long> m_buffer_write_position{0};
+    std::atomic<long long> m_buffer_read_position{0};
     jbyte* m_buffer = nullptr;
 
     int mAudioFormat = 0x1;
+    bool m_mix_audio = false;
+
+    static PhantomBridge* s_instance;
+public:
+    static PhantomBridge* get() { return s_instance; }
+    static void set(PhantomBridge* inst) { s_instance = inst; }
 };
 
 #endif //PHANTOMMIC_PHANTOMBRIDGE_H
