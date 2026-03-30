@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.lang.ref.WeakReference;
 
 import android.media.MediaPlayer;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
 
 import com.optimus0701.phantompad.audio.AudioMaster;
 import com.optimus0701.phantompad.log.Logger;
@@ -19,6 +21,22 @@ public class PhantomManager {
     private ParcelFileDescriptor mCurrentPfd = null;
     private MediaPlayer mMediaPlayer = null;
     private boolean mPlayLocal = false;
+
+    private void setupMediaPlayer() {
+        if (mMediaPlayer != null) {
+            mMediaPlayer.release();
+        }
+        mMediaPlayer = new MediaPlayer();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            mMediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build());
+        } else {
+            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
+        }
+        mMediaPlayer.setVolume(1.0f, 1.0f);
+    }
 
     public PhantomManager(Context context, boolean isNativeHook) {
         Logger.d("Init phantom manager");
@@ -94,8 +112,7 @@ public class PhantomManager {
             
             if (mPlayLocal) {
                 try {
-                    if (mMediaPlayer != null) mMediaPlayer.release();
-                    mMediaPlayer = new MediaPlayer();
+                    setupMediaPlayer();
                     java.io.FileInputStream fis2 = new java.io.FileInputStream(file);
                     mMediaPlayer.setDataSource(fis2.getFD());
                     mMediaPlayer.prepare();
@@ -139,8 +156,7 @@ public class PhantomManager {
                         
                         if (mPlayLocal) {
                             try {
-                                if (mMediaPlayer != null) mMediaPlayer.release();
-                                mMediaPlayer = new MediaPlayer();
+                                setupMediaPlayer();
                                 ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(directUri, "r");
                                 if (pfd2 != null) {
                                     mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
@@ -175,8 +191,7 @@ public class PhantomManager {
                 
                 if (mPlayLocal) {
                     try {
-                        if (mMediaPlayer != null) mMediaPlayer.release();
-                        mMediaPlayer = new MediaPlayer();
+                        setupMediaPlayer();
                         ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(providerUri, "r");
                         if (pfd2 != null) {
                             mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
