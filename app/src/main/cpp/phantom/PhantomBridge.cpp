@@ -2,6 +2,8 @@
 #include <malloc.h>
 #include <cstring>
 #include <unistd.h>
+#include <chrono>
+#include <cmath>
 #include "../logging.h"
 
 PhantomBridge* PhantomBridge::s_instance = nullptr;
@@ -51,9 +53,11 @@ void PhantomBridge::set_mix_audio(bool mix) {
 
 void PhantomBridge::start_loading() {
     nativeClearBuffer();
-    // After clearing, prepare for new stream
+    // Prepare for streaming — playback will begin once MIN_BUFFER_BEFORE_PLAY bytes
+    // have been written (see on_buffer_chunk_loaded). This avoids both:
+    //   - Initial underrun (starting too early with an empty buffer)
+    //   - Deadlock on long files (waiting for the entire file before reading)
     m_loading_active.store(true);
-    m_playing_live.store(true);
 }
 
 void PhantomBridge::on_buffer_chunk_loaded(jbyte *buffer, jsize size) {
@@ -101,33 +105,63 @@ void PhantomBridge::on_buffer_chunk_loaded(jbyte *buffer, jsize size) {
         }
         m_buffer_write_position.fetch_add(size);
     }
+
+    // Start playback once we have enough buffered data to avoid initial underrun.
+    // This threshold prevents both:
+    //   - Starting too early (broken audio at start)
+    //   - Waiting too long / deadlocking (for files larger than ring buffer)
+    if (!m_playing_live.load() && m_buffer_write_position.load() >= MIN_BUFFER_BEFORE_PLAY) {
+        m_playing_live.store(true);
+        LOGI("Streaming started: %lld bytes buffered", m_buffer_write_position.load());
+    }
 }
 
 void PhantomBridge::mix_or_copy(char* dst_raw, const char* src_raw, int size, bool mix) {
+    // Direct copy when not mixing — no per-sample processing to avoid artifacts
     if (!mix) {
         memcpy(dst_raw, src_raw, size);
         return;
     }
+
+    // Mix mode: add our audio on top of mic data with Soft Clipping (Audio Limiter)
+    // Threshold: 0.90 (starts compressing softly above 90% volume to prevent harsh digital clipping)
+    const float THRESHOLD = 0.90f;
+
     if (mAudioFormat == 0x5u) {
         float* dst = reinterpret_cast<float*>(dst_raw);
         const float* src = reinterpret_cast<const float*>(src_raw);
         size_t count = size / sizeof(float);
-        for(size_t i = 0; i < count; ++i) dst[i] += src[i];
+        for(size_t i = 0; i < count; ++i) {
+            float val = src[i] + dst[i];
+            float abs_val = std::abs(val);
+            if (abs_val > THRESHOLD) {
+                // Mathematical soft clipper: asymptotic curve approaching 1.0
+                float over = abs_val - THRESHOLD;
+                val = (val > 0 ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * 2.0f));
+            }
+            dst[i] = val;
+        }
     } else {
         int16_t* dst = reinterpret_cast<int16_t*>(dst_raw);
         const int16_t* src = reinterpret_cast<const int16_t*>(src_raw);
         size_t count = size / sizeof(int16_t);
         for(size_t i = 0; i < count; ++i) {
-            int32_t mixed = dst[i] + src[i];
-            if (mixed > 32767) mixed = 32767;
-            else if (mixed < -32768) mixed = -32768;
-            dst[i] = mixed;
+            float val = ((float)src[i] + (float)dst[i]) / 32768.0f;
+            float abs_val = std::abs(val);
+            if (abs_val > THRESHOLD) {
+                float over = abs_val - THRESHOLD;
+                val = (val > 0.0f ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * 2.0f));
+            }
+            int32_t final_val = (int32_t)(val * 32767.0f);
+            if (final_val > 32767) final_val = 32767;
+            else if (final_val < -32768) final_val = -32768;
+            dst[i] = (int16_t)final_val;
         }
     }
 }
 
-bool PhantomBridge::overwrite_buffer(char* buffer, int size) {
-    if (!m_playing_live.load()) return false;
+bool PhantomBridge::overwrite_buffer_peek(char* buffer, int size) {
+    if (!m_playing_live.load() || m_paused.load()) return false;
 
     long long read_pos = m_buffer_read_position.load();
     long long write_pos = m_buffer_write_position.load();
@@ -159,23 +193,53 @@ bool PhantomBridge::overwrite_buffer(char* buffer, int size) {
         mix_or_copy(buffer + first_part, (char*)m_buffer, bytes_to_copy - first_part, m_mix_audio);
     }
 
-    m_buffer_read_position.fetch_add(bytes_to_copy);
+    // REMOVED: m_buffer_read_position.fetch_add(bytes_to_copy);
+    // Position tracking is now handled by advance_read_position() called from releaseBuffer_hook.
 
-    if (bytes_to_copy < size && m_buffer_loaded.load()) {
-        m_playing_live.store(false);
+    // If we didn't have enough data to fill the entire output buffer,
+    // zero the remaining bytes so the app hears silence instead of stale mic data.
+    if (bytes_to_copy < size) {
+        memset(buffer + bytes_to_copy, 0, size - bytes_to_copy);
+        if (m_buffer_loaded.load()) {
+            m_playing_live.store(false);
+        }
     }
 
     return true;
 }
 
+void PhantomBridge::advance_read_position(int size) {
+    if (size <= 0 || m_paused.load()) return;
+
+    // Diagnostic: track consumption rate exactly based on released bytes
+    static long long total_consumed = 0;
+    static auto start_time = std::chrono::steady_clock::now();
+    total_consumed += size;
+    if (total_consumed >= 96000) { // Log every ~1 second of audio (48kHz mono PCM16)
+        auto now = std::chrono::steady_clock::now();
+        double elapsed_ms = std::chrono::duration<double, std::milli>(now - start_time).count();
+        LOGI("CONSUMPTION: %lld bytes in %.0fms (expected ~1000ms for 96000B)", total_consumed, elapsed_ms);
+        total_consumed = 0;
+        start_time = now;
+    }
+
+    m_buffer_read_position.fetch_add(size);
+}
+
 void PhantomBridge::on_load_done() {
     m_buffer_loaded.store(true);
+    // If the file was short enough that we haven't started playback yet
+    // (less than MIN_BUFFER_BEFORE_PLAY), start it now.
+    if (!m_playing_live.load()) {
+        m_playing_live.store(true);
+    }
 }
 
 void PhantomBridge::unload(JNIEnv *env) {
     m_buffer_loaded.store(false);
     m_playing_live.store(false);
     m_loading_active.store(false);
+    m_paused.store(false);
     m_buffer_size = 4 * 1024 * 1024;
     m_buffer_write_position.store(0);
     m_buffer_read_position.store(0);
@@ -185,4 +249,8 @@ void PhantomBridge::unload(JNIEnv *env) {
         jmethodID method = env->GetMethodID(j_phantomManagerClass, "unload", "()V");
         env->CallVoidMethod(j_phantomManager, method);
     }
+}
+
+void PhantomBridge::set_paused(bool paused) {
+    m_paused.store(paused);
 }

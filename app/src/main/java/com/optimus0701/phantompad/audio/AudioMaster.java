@@ -127,37 +127,81 @@ public class AudioMaster {
 
     private Resampler processInBuffer(MediaFormat source, byte[] bufferChunk, Resampler resampler) {
         if (bufferChunk.length == 0) {
-            return resampler;
+            return null;
         }
 
         int sourceSampleRate = source.getInteger(MediaFormat.KEY_SAMPLE_RATE);
         int sourceChannelCount = source.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         int targetSampleRate = mOutFormat.getSampleRate();
         
-        // Android's getChannelCount() is unreliable if we mix CHANNEL_IN and CHANNEL_OUT masks.
-        // We explicitly check the mask value. 16 is CHANNEL_IN_MONO.
         int targetMask = mOutFormat.getChannelMask();
         int targetChannelCount = (targetMask == 16 || targetMask == android.media.AudioFormat.CHANNEL_OUT_MONO) ? 1 : 2;
 
-        if (sourceSampleRate == targetSampleRate && sourceChannelCount == targetChannelCount) {
-            // Perfect match, no resampling needed!
-            onBufferChunkLoaded(bufferChunk);
-            return null; // Return null so we don't hold an unnecessary instance
+        // Step 1: Channel downmix (stereo → mono)
+        byte[] monoData = bufferChunk;
+        if (sourceChannelCount == 2 && targetChannelCount == 1) {
+            monoData = stereoToMono(bufferChunk);
         }
 
-        if (resampler == null) {
-            ResamplerChannel inChannel = (sourceChannelCount == 1) ? ResamplerChannel.MONO : ResamplerChannel.STEREO;
-            ResamplerChannel outChannel = (targetChannelCount == 1) ? ResamplerChannel.MONO : ResamplerChannel.STEREO;
-
-            ResamplerConfiguration configuration = new ResamplerConfiguration(ResamplerQuality.BEST, inChannel,
-                    sourceSampleRate, outChannel, targetSampleRate);
-            resampler = new Resampler(configuration);
-            Logger.d("AudioMaster: Initialized Resampler " + sourceSampleRate + "Hz -> " + targetSampleRate + "Hz");
+        // Step 2: Sample rate conversion (if needed)
+        if (sourceSampleRate != targetSampleRate) {
+            byte[] resampledData = resampleLinear(monoData, sourceSampleRate, targetSampleRate);
+            Logger.d("Pipeline: " + bufferChunk.length + "B(" + sourceSampleRate + "Hz " + sourceChannelCount + "ch) -> " 
+                + monoData.length + "B(mono) -> " + resampledData.length + "B(" + targetSampleRate + "Hz)");
+            onBufferChunkLoaded(resampledData);
+        } else {
+            Logger.d("Pipeline: " + bufferChunk.length + "B(" + sourceSampleRate + "Hz " + sourceChannelCount + "ch) -> " 
+                + monoData.length + "B(mono, no rate change)");
+            onBufferChunkLoaded(monoData);
         }
 
-        byte[] resampledChunk = resampler.resample(bufferChunk);
-        onBufferChunkLoaded(resampledChunk);
-        return resampler;
+        return null;
+    }
+
+    /** Manual stereo→mono downmix: average L and R channels (PCM16 interleaved) */
+    private byte[] stereoToMono(byte[] stereoData) {
+        int numSamples = stereoData.length / 4; // 4 bytes per stereo frame
+        byte[] monoData = new byte[numSamples * 2]; // 2 bytes per mono frame
+
+        for (int i = 0; i < numSamples; i++) {
+            int L = (stereoData[i * 4] & 0xFF) | (stereoData[i * 4 + 1] << 8);
+            int R = (stereoData[i * 4 + 2] & 0xFF) | (stereoData[i * 4 + 3] << 8);
+            int mono = (L + R) / 2;
+            monoData[i * 2] = (byte)(mono & 0xFF);
+            monoData[i * 2 + 1] = (byte)((mono >> 8) & 0xFF);
+        }
+        return monoData;
+    }
+
+    /** Linear interpolation resampler for mono PCM16 data */
+    private byte[] resampleLinear(byte[] data, int srcRate, int dstRate) {
+        int inputSamples = data.length / 2;
+        int outputSamples = (int)((long)inputSamples * dstRate / srcRate);
+        byte[] output = new byte[outputSamples * 2];
+
+        double ratio = (double)(srcRate) / dstRate;
+
+        for (int i = 0; i < outputSamples; i++) {
+            double srcPos = i * ratio;
+            int srcIndex = (int) srcPos;
+            double frac = srcPos - srcIndex;
+
+            int s0 = readInt16LE(data, srcIndex);
+            int s1 = (srcIndex + 1 < inputSamples) ? readInt16LE(data, srcIndex + 1) : s0;
+
+            int val = (int)(s0 + (s1 - s0) * frac);
+            if (val > 32767) val = 32767;
+            else if (val < -32768) val = -32768;
+
+            output[i * 2] = (byte)(val & 0xFF);
+            output[i * 2 + 1] = (byte)((val >> 8) & 0xFF);
+        }
+        return output;
+    }
+
+    private int readInt16LE(byte[] data, int sampleIndex) {
+        int offset = sampleIndex * 2;
+        return (data[offset] & 0xFF) | (data[offset + 1] << 8);
     }
 
     public void setFormat(AudioFormat format) {

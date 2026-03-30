@@ -52,6 +52,13 @@ namespace HookCompat {
         });
     }
 
+    uintptr_t get_releaseBuffer_symbol(ElfScanner elfScanner) {
+        return get_symbol(elfScanner, {
+                "_ZN7android11AudioRecord13releaseBufferEPKNS0_6BufferE",
+                "_ZN7android11AudioRecord13releaseBufferEPNS0_6BufferE"
+        });
+    }
+
     uintptr_t get_set_symbol(KittyScanner::ElfScanner elfScanner) {
         return get_symbol(elfScanner, {
             // Android 7,8

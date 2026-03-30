@@ -19,7 +19,8 @@ public:
 
     void on_buffer_chunk_loaded(jbyte* buffer, jsize size);
 
-    bool overwrite_buffer(char* buffer, int size);
+    bool overwrite_buffer_peek(char* buffer, int size);
+    void advance_read_position(int size);
 
     void on_load_done();
 
@@ -28,6 +29,9 @@ public:
     void nativeClearBuffer();
 
     void set_mix_audio(bool mix);
+    void set_paused(bool paused);
+
+    int getAudioFormat() const { return mAudioFormat; }
 
 private:
     void mix_or_copy(char* dst_raw, const char* src_raw, int size, bool mix);
@@ -37,6 +41,7 @@ private:
     std::atomic<bool> m_playing_live{false};
     std::atomic<bool> m_buffer_loaded{false};
     std::atomic<bool> m_loading_active{false};
+    std::atomic<bool> m_paused{false};
     int m_buffer_size = 4 * 1024 * 1024; // 4MB
     std::atomic<long long> m_buffer_write_position{0};
     std::atomic<long long> m_buffer_read_position{0};
@@ -44,6 +49,8 @@ private:
 
     int mAudioFormat = 0x1;
     bool m_mix_audio = false;
+    float m_gain = 1.0f; // 1.0 = no boost. Increase only if volume is too low after testing.
+    static constexpr int MIN_BUFFER_BEFORE_PLAY = 64 * 1024; // 64KB threshold before starting playback
 
     static PhantomBridge* s_instance;
 public:

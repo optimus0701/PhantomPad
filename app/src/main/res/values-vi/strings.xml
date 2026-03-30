@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhantomPad</string>
+    <string name="tab_home">Bài hát</string>
+    <string name="tab_options">Cài đặt</string>
+    <string name="tab_user">Hồ sơ</string>
+    <string name="btn_select_folder">Chọn thư mục</string>
+    <string name="btn_refresh">Cập nhật</string>
+    <string name="opt_mix_audio">Phát và thu mic cùng lúc</string>
+    <string name="opt_mix_audio_desc">Trộn nhạc vào luồng mic đang thu thay vì ghi đè hoàn toàn</string>
+    <string name="user_login">Đăng nhập</string>
+    <string name="user_signup">Đăng ký</string>
+    <string name="user_premium_status">Trạng thái Premium: Miễn phí</string>
+    <string name="user_switch_language">Đổi ngôn ngữ (ENG)</string>
+    <string name="user_welcome">Chào mừng đến với PhantomPad</string>
+    
+    <string name="opt_play_local">Phát và nghe cùng lúc</string>
+    <string name="opt_play_local_desc">Phát âm thanh trên loa thiết bị trong khi truyền vào Mic</string>
+</resources>

@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">PhantomPad</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_options">Options</string>
+    <string name="tab_user">Profile</string>
+    <string name="btn_select_folder">Select Folder</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="opt_mix_audio">Play and Mix Mic</string>
+    <string name="opt_mix_audio_desc">Injects audio while keeping your microphone active</string>
+    <string name="user_login">Login</string>
+    <string name="user_signup">Sign Up</string>
+    <string name="user_premium_status">Premium Status: Free</string>
+    <string name="user_switch_language">Switch Language (VNN)</string>
+    <string name="user_welcome">Welcome to PhantomPad</string>
+    
+    <string name="opt_play_local">Hear While Playing</string>
+    <string name="opt_play_local_desc">Plays the audio locally on your device while injecting it</string>
 </resources>

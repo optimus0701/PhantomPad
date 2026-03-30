@@ -59,14 +59,41 @@ public class MainHook implements IXposedHookLoadPackage {
                 int channelCount = record.getChannelCount();
                 int audioFormat = record.getAudioFormat();
                 int session = record.getAudioSessionId();
+                int source = record.getAudioSource();
+
                 Logger.d("AudioRecord startRecording -> SampleRate: " + sampleRate + 
                         "Hz, Channels: " + channelCount + 
                         ", Format: " + audioFormat + 
+                        ", Source: " + source +
                         ", Session: " + session);
-                
+
+                // Force VOICE_COMMUNICATION -> VOICE_RECOGNITION via reflection
+                // This is the ONLY reliable way on Android 13 where native set_hook fails
+                if (source == android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
+                    try {
+                        java.lang.reflect.Field sourceField = android.media.AudioRecord.class.getDeclaredField("mRecordSource");
+                        sourceField.setAccessible(true);
+                        sourceField.setInt(record, android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION);
+                        Logger.d("AudioRecord: Forced mRecordSource VOICE_COMMUNICATION(7) -> VOICE_RECOGNITION(6) via reflection");
+                    } catch (NoSuchFieldException e) {
+                        Logger.d("AudioRecord: mRecordSource field not found, trying alternative...");
+                    } catch (Exception e) {
+                        Logger.d("AudioRecord: Failed to set mRecordSource: " + e.getMessage());
+                    }
+                }
+
+                // Disable privacy-sensitive mode (Android 11+)
+                // This prevents Discord from getting enhanced audio processing
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    try {
+                        java.lang.reflect.Method m = android.media.AudioRecord.class.getMethod("setPrivacySensitive", boolean.class);
+                        m.invoke(record, false);
+                        Logger.d("AudioRecord: setPrivacySensitive(false)");
+                    } catch (Exception e) {}
+                }
+
                 // Let PhantomManager know about the exact format requested
                 if (phantomManager != null) {
-                    // Try to send it to the resampler if it's already running
                     try {
                         phantomManager.updateAudioFormat(sampleRate, record.getChannelConfiguration(), audioFormat);
                     } catch (Exception e) {}
@@ -95,6 +122,88 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod("android.media.audiofx.AutomaticGainControl", lpparam.classLoader, "create", int.class, disableAudioEffectHook);
         } catch (Throwable t) {
             Logger.d("Failed to hook AudioEffects: " + t.getMessage());
+        }
+
+        // ── Discord/WebRTC-specific hooks ──────────────────────────────────
+        // Discord creates AudioRecord via AudioRecord.Builder (not the 5-arg constructor).
+        // Without hooking the Builder, VOICE_COMMUNICATION cannot be overridden.
+
+        // 1) Hook AudioRecord.Builder.setAudioSource to force VOICE_RECOGNITION
+        try {
+            XposedHelpers.findAndHookMethod("android.media.AudioRecord$Builder", lpparam.classLoader,
+                "setAudioSource", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        int source = (int) param.args[0];
+                        if (source == android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
+                            param.args[0] = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION;
+                            Logger.d("AudioRecord.Builder: Forced AudioSource VOICE_COMMUNICATION -> VOICE_RECOGNITION");
+                        }
+                    }
+                });
+        } catch (Throwable t) {
+            Logger.d("Failed to hook AudioRecord.Builder.setAudioSource: " + t.getMessage());
+        }
+
+        // 2) Hook AudioRecord.Builder.build() to disable privacy-sensitive flag
+        //    and capture the created AudioRecord's actual format
+        try {
+            XposedHelpers.findAndHookMethod("android.media.AudioRecord$Builder", lpparam.classLoader,
+                "build", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        // On Android 11+ (API 30), disable privacy-sensitive mode.
+                        // When enabled, Discord gets exclusive audio processing that filters music.
+                        if (android.os.Build.VERSION.SDK_INT >= 30) {
+                            try {
+                                XposedHelpers.callMethod(param.thisObject, "setPrivacySensitive", false);
+                                Logger.d("AudioRecord.Builder: Forced setPrivacySensitive(false)");
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (param.getResult() != null) {
+                            android.media.AudioRecord record = (android.media.AudioRecord) param.getResult();
+                            Logger.d("AudioRecord.Builder.build() -> SampleRate: " + record.getSampleRate() +
+                                    "Hz, Channels: " + record.getChannelCount() +
+                                    ", Format: " + record.getAudioFormat() +
+                                    ", Source: " + record.getAudioSource());
+                            if (phantomManager != null) {
+                                try {
+                                    phantomManager.updateAudioFormat(
+                                        record.getSampleRate(),
+                                        record.getChannelConfiguration(),
+                                        record.getAudioFormat());
+                                } catch (Exception e) {}
+                            }
+                        }
+                    }
+                });
+        } catch (Throwable t) {
+            Logger.d("Failed to hook AudioRecord.Builder.build: " + t.getMessage());
+        }
+
+        // 3) Broad AudioEffect disable: catch ANY audio effect being enabled
+        //    (covers WebRTC using effects beyond NS/AEC/AGC)
+        try {
+            XposedHelpers.findAndHookMethod("android.media.audiofx.AudioEffect", lpparam.classLoader,
+                "setEnabled", boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        boolean enabling = (boolean) param.args[0];
+                        if (enabling) {
+                            param.args[0] = false;
+                            android.media.audiofx.AudioEffect effect = (android.media.audiofx.AudioEffect) param.thisObject;
+                            try {
+                                Logger.d("Blocked AudioEffect.setEnabled(true) for: " + effect.getDescriptor().name);
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                });
+        } catch (Throwable t) {
+            Logger.d("Failed to hook AudioEffect.setEnabled: " + t.getMessage());
         }
 
         XposedHelpers.findAndHookMethod("android.app.Instrumentation", lpparam.classLoader, "callApplicationOnCreate", Application.class, new XC_MethodHook() {
@@ -129,10 +238,13 @@ public class MainHook implements IXposedHookLoadPackage {
                     Logger.d("MainHook: Received broadcast cmd=" + cmd);
                     if ("play".equals(cmd)) {
                         boolean mixAudio = intent.getBooleanExtra("mix_audio", false);
+                        boolean playLocal = intent.getBooleanExtra("play_local", false);
                         String filePath = intent.getStringExtra("file_path");
                         String uriStr = intent.getStringExtra("uri");
                         phantomManager.setMixAudio(mixAudio);
-                        Logger.d("MainHook: Loading audio (filePath=" + filePath + ", uri=" + (uriStr != null ? "set" : "null") + ")");
+                        phantomManager.setPlayLocal(playLocal);
+                        phantomManager.setPaused(false);
+                        Logger.d("MainHook: Loading audio... (mix=" + mixAudio + ", local=" + playLocal + ")");
                         if (filePath != null) {
                             phantomManager.loadFromFile(filePath);
                         } else if (uriStr != null) {
@@ -140,8 +252,15 @@ public class MainHook implements IXposedHookLoadPackage {
                         } else {
                             phantomManager.load();
                         }
+                    } else if ("pause".equals(cmd)) {
+                        Logger.d("MainHook: Pausing audio...");
+                        phantomManager.setPaused(true);
+                    } else if ("resume".equals(cmd)) {
+                        Logger.d("MainHook: Resuming audio...");
+                        phantomManager.setPaused(false);
                     } else if ("stop".equals(cmd)) {
                         Logger.d("MainHook: Stopping audio...");
+                        phantomManager.setPaused(false);
                         phantomManager.unload();
                     }
                 }

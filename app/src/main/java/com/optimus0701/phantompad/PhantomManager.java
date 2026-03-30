@@ -7,6 +7,8 @@ import android.os.ParcelFileDescriptor;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 
+import android.media.MediaPlayer;
+
 import com.optimus0701.phantompad.audio.AudioMaster;
 import com.optimus0701.phantompad.log.Logger;
 
@@ -15,6 +17,8 @@ public class PhantomManager {
     private final AudioMaster mAudioMaster;
     
     private ParcelFileDescriptor mCurrentPfd = null;
+    private MediaPlayer mMediaPlayer = null;
+    private boolean mPlayLocal = false;
 
     public PhantomManager(Context context, boolean isNativeHook) {
         Logger.d("Init phantom manager");
@@ -28,24 +32,41 @@ public class PhantomManager {
     }
 
     private String mLastLoadedFilePath = null;
+    private boolean mHasActiveAudio = false; // True only after an explicit play command
+
+    // Debounce format-change reloads: Discord fires format updates multiple times in rapid
+    // succession (set_hook + obtainBuffer_hook). Without debounce, each update cancels the
+    // previous decode and restarts it, causing vỡ tiếng / mất âm.
+    private final android.os.Handler mFormatUpdateHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable mPendingFormatUpdate = null;
 
     public void updateAudioFormat(int sampleRate, int channelMask, int encoding) {
-        // Only trigger a reload if the format actually changes to avoid infinite load loops
         android.media.AudioFormat currentFormat = mAudioMaster.getFormat();
-        boolean formatChanged = currentFormat == null || 
+        boolean formatChanged = currentFormat == null ||
                                 currentFormat.getSampleRate() != sampleRate ||
                                 currentFormat.getChannelMask() != channelMask;
-                                
+
         mAudioMaster.setFormat(sampleRate, channelMask, encoding);
         Logger.d("Target format updated: " + sampleRate + "Hz, mask " + channelMask);
-        
-        if (formatChanged) {
-            Logger.d("Audio format changed, triggering reload of audio file with new resampler settings");
-            if (mLastLoadedFilePath != null) {
-                loadFromFile(mLastLoadedFilePath);
-            } else {
-                load();
+
+        if (formatChanged && mHasActiveAudio) {
+            // Only reload if audio was previously loaded — avoid spurious reloads
+            // during Discord's initial format detection when nothing is playing.
+            if (mPendingFormatUpdate != null) {
+                mFormatUpdateHandler.removeCallbacks(mPendingFormatUpdate);
             }
+            final String filePathSnapshot = mLastLoadedFilePath;
+            mPendingFormatUpdate = () -> {
+                Logger.d("Format stabilised, reloading audio (path=" + filePathSnapshot + ")");
+                if (filePathSnapshot != null) {
+                    loadFromFile(filePathSnapshot);
+                } else {
+                    load();
+                }
+                mPendingFormatUpdate = null;
+            };
+            mFormatUpdateHandler.postDelayed(mPendingFormatUpdate, 150);
         }
     }
 
@@ -70,6 +91,23 @@ public class PhantomManager {
             }
             java.io.FileInputStream fis = new java.io.FileInputStream(file);
             mAudioMaster.load(fis.getFD());
+            
+            if (mPlayLocal) {
+                try {
+                    if (mMediaPlayer != null) mMediaPlayer.release();
+                    mMediaPlayer = new MediaPlayer();
+                    java.io.FileInputStream fis2 = new java.io.FileInputStream(file);
+                    mMediaPlayer.setDataSource(fis2.getFD());
+                    mMediaPlayer.prepare();
+                    mMediaPlayer.start();
+                    fis2.close();
+                } catch (Exception mpEx) {
+                    Logger.d("MediaPlayer failed for file path: " + mpEx.getMessage());
+                }
+            }
+            
+            mHasActiveAudio = true;
+            mLastLoadedFilePath = filePath;
             Logger.d("Audio file loaded directly from path: " + filePath);
         } catch (Exception e) {
             Logger.d("Error loading from file path: " + e.getMessage());
@@ -98,6 +136,24 @@ public class PhantomManager {
                     mCurrentPfd = context.getContentResolver().openFileDescriptor(directUri, "r");
                     if (mCurrentPfd != null) {
                         mAudioMaster.load(mCurrentPfd.getFileDescriptor());
+                        
+                        if (mPlayLocal) {
+                            try {
+                                if (mMediaPlayer != null) mMediaPlayer.release();
+                                mMediaPlayer = new MediaPlayer();
+                                ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(directUri, "r");
+                                if (pfd2 != null) {
+                                    mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
+                                    mMediaPlayer.prepare();
+                                    mMediaPlayer.start();
+                                    pfd2.close();
+                                }
+                            } catch (Exception mpEx) {
+                                Logger.d("MediaPlayer failed for direct URI: " + mpEx.getMessage());
+                            }
+                        }
+                        
+                        mHasActiveAudio = true;
                         Logger.d("Audio file loaded directly from URI");
                         return;
                     }
@@ -116,6 +172,24 @@ public class PhantomManager {
             mCurrentPfd = context.getContentResolver().openFileDescriptor(providerUri, "r");
             if (mCurrentPfd != null) {
                 mAudioMaster.load(mCurrentPfd.getFileDescriptor());
+                
+                if (mPlayLocal) {
+                    try {
+                        if (mMediaPlayer != null) mMediaPlayer.release();
+                        mMediaPlayer = new MediaPlayer();
+                        ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(providerUri, "r");
+                        if (pfd2 != null) {
+                            mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
+                            mMediaPlayer.prepare();
+                            mMediaPlayer.start();
+                            pfd2.close();
+                        }
+                    } catch (Exception mpEx) {
+                        Logger.d("MediaPlayer failed for URI: " + mpEx.getMessage());
+                    }
+                }
+                
+                mHasActiveAudio = true;
                 Logger.d("Audio file loaded from SoundboardProvider");
             } else {
                 Logger.d("SoundboardProvider returned null PFD");
@@ -126,6 +200,17 @@ public class PhantomManager {
     }
 
     public void unload() {
+        if (mMediaPlayer != null) {
+            try {
+                if (mMediaPlayer.isPlaying()) {
+                    mMediaPlayer.stop();
+                }
+                mMediaPlayer.release();
+            } catch (Exception ignored) {}
+            mMediaPlayer = null;
+        }
+
+        mHasActiveAudio = false;
         mAudioMaster.unload();
         
         if (mCurrentPfd != null) {
@@ -141,11 +226,29 @@ public class PhantomManager {
         Logger.d("Done unloading data");
     }
 
+    public void setPlayLocal(boolean playLocal) {
+        mPlayLocal = playLocal;
+    }
+
     public void setMixAudio(boolean mixAudio) {
         nativeSetMixAudio(mixAudio);
     }
 
+    public void setPaused(boolean paused) {
+        nativeSetPaused(paused);
+        if (mMediaPlayer != null) {
+            try {
+                if (paused && mMediaPlayer.isPlaying()) {
+                    mMediaPlayer.pause();
+                } else if (!paused && !mMediaPlayer.isPlaying()) {
+                    mMediaPlayer.start();
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
     public native void nativeSetMixAudio(boolean mixAudio);
+    public native void nativeSetPaused(boolean paused);
     public native void nativeClearBuffer();
     private native void nativeHook();
 }

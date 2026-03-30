@@ -18,18 +18,24 @@ public class AudioFilesAdapter extends RecyclerView.Adapter<AudioFilesAdapter.Vi
     private final OnItemClickListener mListener;
     private String mNowPlayingUri = null;
     private long mPlayStartTime = 0;
+    private long mTotalElapsedMs = 0;
     private long mDurationMs = 0;
+    private boolean mIsPaused = false;
     private final android.os.Handler mTimerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private Runnable mTimerRunnable;
 
     public interface OnItemClickListener {
         void onPlayClick(AudioFile file);
+        void onPauseClick(AudioFile file);
+        void onResumeClick(AudioFile file);
         void onMoreClick(AudioFile file);
     }
 
     public void setNowPlaying(String uri, long durationMs) {
         mNowPlayingUri = uri;
         mDurationMs = durationMs;
+        mIsPaused = false;
+        mTotalElapsedMs = 0;
         if (uri != null) {
             mPlayStartTime = android.os.SystemClock.elapsedRealtime();
             startTimer();
@@ -37,6 +43,20 @@ public class AudioFilesAdapter extends RecyclerView.Adapter<AudioFilesAdapter.Vi
             mPlayStartTime = 0;
             mDurationMs = 0;
             stopTimer();
+        }
+        notifyDataSetChanged();
+    }
+
+    public void setPaused(boolean paused) {
+        if (mIsPaused == paused) return;
+        mIsPaused = paused;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (paused) {
+            mTotalElapsedMs += (now - mPlayStartTime);
+            stopTimer();
+        } else {
+            mPlayStartTime = now;
+            startTimer();
         }
         notifyDataSetChanged();
     }
@@ -97,25 +117,44 @@ public class AudioFilesAdapter extends RecyclerView.Adapter<AudioFilesAdapter.Vi
         }
         
         if (uriStr.equals(mNowPlayingUri)) {
-            holder.btnPlay.setImageResource(android.R.drawable.ic_media_pause);
-            long elapsed = (android.os.SystemClock.elapsedRealtime() - mPlayStartTime) / 1000;
-            long min = elapsed / 60;
-            long sec = elapsed % 60;
+            long elapsedMs = mTotalElapsedMs;
+            if (!mIsPaused) {
+                elapsedMs += (android.os.SystemClock.elapsedRealtime() - mPlayStartTime);
+            }
+            long elapsedSec = elapsedMs / 1000;
+            long min = elapsedSec / 60;
+            long sec = elapsedSec % 60;
+            
+            holder.progressNowPlaying.setVisibility(View.VISIBLE);
+            
             if (mDurationMs > 0) {
                 long totalSec = mDurationMs / 1000;
                 long totalMin = totalSec / 60;
                 long totalSecR = totalSec % 60;
-                holder.textNowPlaying.setText(String.format("♪ Now Playing  %d:%02d / %d:%02d", min, sec, totalMin, totalSecR));
+                holder.textNowPlaying.setText(String.format("%s  %d:%02d / %d:%02d", mIsPaused ? "♪ Paused" : "♪ Now Playing", min, sec, totalMin, totalSecR));
+                
+                holder.progressNowPlaying.setMax((int) mDurationMs);
+                holder.progressNowPlaying.setProgress((int) elapsedMs);
             } else {
-                holder.textNowPlaying.setText(String.format("♪ Now Playing  %d:%02d", min, sec));
+                holder.textNowPlaying.setText(String.format("%s  %d:%02d", mIsPaused ? "♪ Paused" : "♪ Now Playing", min, sec));
+                holder.progressNowPlaying.setIndeterminate(true);
             }
             holder.textNowPlaying.setVisibility(View.VISIBLE);
+            
+            if (mIsPaused) {
+                holder.btnPlay.setImageResource(android.R.drawable.ic_media_play);
+                holder.btnPlay.setOnClickListener(v -> mListener.onResumeClick(file));
+            } else {
+                holder.btnPlay.setImageResource(android.R.drawable.ic_media_pause);
+                holder.btnPlay.setOnClickListener(v -> mListener.onPauseClick(file));
+            }
         } else {
             holder.btnPlay.setImageResource(android.R.drawable.ic_media_play);
             holder.textNowPlaying.setVisibility(View.GONE);
+            holder.progressNowPlaying.setVisibility(View.GONE);
+            holder.btnPlay.setOnClickListener(v -> mListener.onPlayClick(file));
         }
         
-        holder.btnPlay.setOnClickListener(v -> mListener.onPlayClick(file));
         holder.btnMore.setOnClickListener(v -> mListener.onMoreClick(file));
     }
 
@@ -127,11 +166,13 @@ public class AudioFilesAdapter extends RecyclerView.Adapter<AudioFilesAdapter.Vi
     static class ViewHolder extends RecyclerView.ViewHolder {
         TextView textFilename, textStatus, textNowPlaying;
         android.widget.ImageButton btnPlay, btnMore;
+        com.google.android.material.progressindicator.LinearProgressIndicator progressNowPlaying;
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             textFilename = itemView.findViewById(R.id.text_filename);
             textStatus = itemView.findViewById(R.id.text_status);
             textNowPlaying = itemView.findViewById(R.id.text_now_playing);
+            progressNowPlaying = itemView.findViewById(R.id.progress_now_playing);
             btnPlay = itemView.findViewById(R.id.btn_play);
             btnMore = itemView.findViewById(R.id.btn_more);
         }

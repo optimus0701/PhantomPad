@@ -49,6 +49,14 @@
                 android:layout_marginTop="2dp"
                 android:visibility="gone"
                 android:text="♪ Now Playing" />
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/progress_now_playing"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:visibility="gone"
+                app:trackThickness="4dp" />
         </LinearLayout>
 
         <ImageButton
