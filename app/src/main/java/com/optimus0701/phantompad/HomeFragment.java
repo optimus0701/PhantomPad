@@ -11,19 +11,25 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-import androidx.documentfile.provider.DocumentFile;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.documentfile.provider.DocumentFile;
+import android.media.MediaPlayer;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+
+import com.optimus0701.phantompad.log.Logger;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +43,7 @@ public class HomeFragment extends Fragment {
     private Runnable mAutoStopRunnable = null;
     private long mRemainingDurationMs = 0;
     private long mCurrentPlayStartTime = 0;
+    private MediaPlayer mMediaPlayer = null;
 
     private ActivityResultLauncher<Uri> mFolderPicker;
 
@@ -95,6 +102,13 @@ public class HomeFragment extends Fragment {
             @Override
             public void onPauseClick(AudioFile file) {
                 if (getContext() == null) return;
+                
+                if (mMediaPlayer != null) {
+                    try {
+                        if (mMediaPlayer.isPlaying()) mMediaPlayer.pause();
+                    } catch (Exception ignored) {}
+                }
+                
                 Intent intent = new Intent("com.optimus0701.phantompad.ACTION_CONTROL");
                 intent.putExtra("cmd", "pause");
                 getContext().sendBroadcast(intent);
@@ -108,6 +122,13 @@ public class HomeFragment extends Fragment {
             @Override
             public void onResumeClick(AudioFile file) {
                 if (getContext() == null) return;
+                
+                if (mMediaPlayer != null) {
+                    try {
+                        mMediaPlayer.start();
+                    } catch (Exception ignored) {}
+                }
+                
                 Intent intent = new Intent("com.optimus0701.phantompad.ACTION_CONTROL");
                 intent.putExtra("cmd", "resume");
                 getContext().sendBroadcast(intent);
@@ -145,7 +166,6 @@ public class HomeFragment extends Fragment {
         Intent intent = new Intent("com.optimus0701.phantompad.ACTION_CONTROL");
         intent.putExtra("cmd", "play");
         intent.putExtra("mix_audio", mixAudio);
-        intent.putExtra("play_local", playLocal);
         intent.putExtra("uri", uriStr); 
         if (cachedFilePath != null) {
             intent.putExtra("file_path", cachedFilePath);
@@ -162,6 +182,13 @@ public class HomeFragment extends Fragment {
             mAutoStopRunnable = () -> {
                 mCurrentPlayingUri = null;
                 mAdapter.setNowPlaying(null, 0);
+                if (mMediaPlayer != null) {
+                    try {
+                        mMediaPlayer.stop();
+                        mMediaPlayer.release();
+                    } catch (Exception ignored) {}
+                    mMediaPlayer = null;
+                }
                 if (getContext() != null) {
                     Intent stopIntent = new Intent("com.optimus0701.phantompad.ACTION_CONTROL");
                     stopIntent.putExtra("cmd", "stop");
@@ -173,9 +200,35 @@ public class HomeFragment extends Fragment {
             mAutoStopHandler.postDelayed(mAutoStopRunnable, mRemainingDurationMs);
         }
         
+        if (playLocal) {
+            playLocalAudio(file.uri);
+        }
+        
         Toast.makeText(getContext(), "▶ " + file.name, Toast.LENGTH_SHORT).show();
     }
     
+    private void playLocalAudio(Uri uri) {
+        if (getContext() == null) return;
+        try {
+            if (mMediaPlayer != null) {
+                mMediaPlayer.release();
+            }
+            mMediaPlayer = new MediaPlayer();
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                mMediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build());
+            } else {
+                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
+            }
+            mMediaPlayer.setVolume(1.0f, 1.0f);
+            mMediaPlayer.setDataSource(getContext(), uri);
+            mMediaPlayer.prepare();
+            mMediaPlayer.start();
+        } catch (Exception ignored) {}
+    }
+
     private String copyToAccessibleCache(Uri sourceUri) {
         if (getContext() == null) return null;
         try {
@@ -214,6 +267,15 @@ public class HomeFragment extends Fragment {
     private void stopPlayback() {
         if (getContext() == null) return;
         cancelAutoStop();
+        
+        if (mMediaPlayer != null) {
+            try {
+                mMediaPlayer.stop();
+                mMediaPlayer.release();
+            } catch (Exception ignored) {}
+            mMediaPlayer = null;
+        }
+        
         Intent intent = new Intent("com.optimus0701.phantompad.ACTION_CONTROL");
         intent.putExtra("cmd", "stop");
         getContext().sendBroadcast(intent);

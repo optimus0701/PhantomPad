@@ -7,7 +7,6 @@ import android.os.ParcelFileDescriptor;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 
-import android.media.MediaPlayer;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 
@@ -19,24 +18,6 @@ public class PhantomManager {
     private final AudioMaster mAudioMaster;
     
     private ParcelFileDescriptor mCurrentPfd = null;
-    private MediaPlayer mMediaPlayer = null;
-    private boolean mPlayLocal = false;
-
-    private void setupMediaPlayer() {
-        if (mMediaPlayer != null) {
-            mMediaPlayer.release();
-        }
-        mMediaPlayer = new MediaPlayer();
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            mMediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build());
-        } else {
-            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
-        }
-        mMediaPlayer.setVolume(1.0f, 1.0f);
-    }
 
     public PhantomManager(Context context, boolean isNativeHook) {
         Logger.d("Init phantom manager");
@@ -109,20 +90,6 @@ public class PhantomManager {
             }
             java.io.FileInputStream fis = new java.io.FileInputStream(file);
             mAudioMaster.load(fis.getFD());
-            
-            if (mPlayLocal) {
-                try {
-                    setupMediaPlayer();
-                    java.io.FileInputStream fis2 = new java.io.FileInputStream(file);
-                    mMediaPlayer.setDataSource(fis2.getFD());
-                    mMediaPlayer.prepare();
-                    mMediaPlayer.start();
-                    fis2.close();
-                } catch (Exception mpEx) {
-                    Logger.d("MediaPlayer failed for file path: " + mpEx.getMessage());
-                }
-            }
-            
             mHasActiveAudio = true;
             mLastLoadedFilePath = filePath;
             Logger.d("Audio file loaded directly from path: " + filePath);
@@ -153,22 +120,6 @@ public class PhantomManager {
                     mCurrentPfd = context.getContentResolver().openFileDescriptor(directUri, "r");
                     if (mCurrentPfd != null) {
                         mAudioMaster.load(mCurrentPfd.getFileDescriptor());
-                        
-                        if (mPlayLocal) {
-                            try {
-                                setupMediaPlayer();
-                                ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(directUri, "r");
-                                if (pfd2 != null) {
-                                    mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
-                                    mMediaPlayer.prepare();
-                                    mMediaPlayer.start();
-                                    pfd2.close();
-                                }
-                            } catch (Exception mpEx) {
-                                Logger.d("MediaPlayer failed for direct URI: " + mpEx.getMessage());
-                            }
-                        }
-                        
                         mHasActiveAudio = true;
                         Logger.d("Audio file loaded directly from URI");
                         return;
@@ -188,22 +139,6 @@ public class PhantomManager {
             mCurrentPfd = context.getContentResolver().openFileDescriptor(providerUri, "r");
             if (mCurrentPfd != null) {
                 mAudioMaster.load(mCurrentPfd.getFileDescriptor());
-                
-                if (mPlayLocal) {
-                    try {
-                        setupMediaPlayer();
-                        ParcelFileDescriptor pfd2 = context.getContentResolver().openFileDescriptor(providerUri, "r");
-                        if (pfd2 != null) {
-                            mMediaPlayer.setDataSource(pfd2.getFileDescriptor());
-                            mMediaPlayer.prepare();
-                            mMediaPlayer.start();
-                            pfd2.close();
-                        }
-                    } catch (Exception mpEx) {
-                        Logger.d("MediaPlayer failed for URI: " + mpEx.getMessage());
-                    }
-                }
-                
                 mHasActiveAudio = true;
                 Logger.d("Audio file loaded from SoundboardProvider");
             } else {
@@ -215,16 +150,6 @@ public class PhantomManager {
     }
 
     public void unload() {
-        if (mMediaPlayer != null) {
-            try {
-                if (mMediaPlayer.isPlaying()) {
-                    mMediaPlayer.stop();
-                }
-                mMediaPlayer.release();
-            } catch (Exception ignored) {}
-            mMediaPlayer = null;
-        }
-
         mHasActiveAudio = false;
         mAudioMaster.unload();
         
@@ -241,25 +166,12 @@ public class PhantomManager {
         Logger.d("Done unloading data");
     }
 
-    public void setPlayLocal(boolean playLocal) {
-        mPlayLocal = playLocal;
-    }
-
     public void setMixAudio(boolean mixAudio) {
         nativeSetMixAudio(mixAudio);
     }
 
     public void setPaused(boolean paused) {
         nativeSetPaused(paused);
-        if (mMediaPlayer != null) {
-            try {
-                if (paused && mMediaPlayer.isPlaying()) {
-                    mMediaPlayer.pause();
-                } else if (!paused && !mMediaPlayer.isPlaying()) {
-                    mMediaPlayer.start();
-                }
-            } catch (Exception ignored) {}
-        }
     }
 
     public native void nativeSetMixAudio(boolean mixAudio);

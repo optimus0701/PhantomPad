@@ -238,13 +238,11 @@ public class MainHook implements IXposedHookLoadPackage {
                     Logger.d("MainHook: Received broadcast cmd=" + cmd);
                     if ("play".equals(cmd)) {
                         boolean mixAudio = intent.getBooleanExtra("mix_audio", false);
-                        boolean playLocal = intent.getBooleanExtra("play_local", false);
                         String filePath = intent.getStringExtra("file_path");
                         String uriStr = intent.getStringExtra("uri");
                         phantomManager.setMixAudio(mixAudio);
-                        phantomManager.setPlayLocal(playLocal);
                         phantomManager.setPaused(false);
-                        Logger.d("MainHook: Loading audio... (mix=" + mixAudio + ", local=" + playLocal + ")");
+                        Logger.d("MainHook: Loading audio... (mix=" + mixAudio + ")");
                         if (filePath != null) {
                             phantomManager.loadFromFile(filePath);
                         } else if (uriStr != null) {

@@ -6,23 +6,18 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 
 import java.io.FileDescriptor;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import io.github.nailik.androidresampler.Resampler;
-import io.github.nailik.androidresampler.ResamplerConfiguration;
-import io.github.nailik.androidresampler.data.ResamplerChannel;
-import io.github.nailik.androidresampler.data.ResamplerQuality;
 import com.optimus0701.phantompad.log.Logger;
 
 public class AudioMaster {
     private static final int TIMEOUT_MS = 1000;
 
     private AudioFormat mOutFormat;
-    private final java.util.concurrent.atomic.AtomicInteger mLoadId = new java.util.concurrent.atomic.AtomicInteger(0);
+    private final AtomicInteger mLoadId = new AtomicInteger(0);
 
     private final ExecutorService audioLoadExecutor = Executors.newSingleThreadExecutor();
 
@@ -41,7 +36,6 @@ public class AudioMaster {
                 Logger.d("mimeType cannot be null");
                 return;
             }
-
             MediaCodec codec = MediaCodec.createDecoderByType(mimeType);
             codec.configure(format, null, null, 0);
             codec.start();
@@ -63,7 +57,6 @@ public class AudioMaster {
 
         boolean isEOS = false;
         boolean aborted = false;
-        Resampler resampler = null;
         
         try {
             do {
@@ -93,13 +86,12 @@ public class AudioMaster {
                         outputBuffer.get(pcmData);
                         outputBuffer.clear();
 
-                        resampler = processInBuffer(format, pcmData, resampler);
+                        processInBuffer(format, pcmData);
                     }
                     codec.releaseOutputBuffer(outputBufferIndex, false);
                 } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     format = codec.getOutputFormat();
                     Logger.d("Format changed to " + format);
-                    resampler = null; // Recreate resampler on format change
                 }
 
                 if (mLoadId.get() != loadId) {
@@ -125,9 +117,9 @@ public class AudioMaster {
         }
     }
 
-    private Resampler processInBuffer(MediaFormat source, byte[] bufferChunk, Resampler resampler) {
+    private void processInBuffer(MediaFormat source, byte[] bufferChunk) {
         if (bufferChunk.length == 0) {
-            return null;
+            return;
         }
 
         int sourceSampleRate = source.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -154,8 +146,6 @@ public class AudioMaster {
                 + monoData.length + "B(mono, no rate change)");
             onBufferChunkLoaded(monoData);
         }
-
-        return null;
     }
 
     /** Manual stereo→mono downmix: average L and R channels (PCM16 interleaved) */
