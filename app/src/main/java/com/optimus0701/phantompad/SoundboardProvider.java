@@ -60,6 +60,20 @@ public class SoundboardProvider extends ContentProvider {
     @Nullable
     @Override
     public Cursor query(@NonNull Uri uri, @Nullable String[] projection, @Nullable String selection, @Nullable String[] selectionArgs, @Nullable String sortOrder) {
+        Context context = getContext();
+        if (context != null) {
+            SharedPreferences prefs = context.getSharedPreferences("phantom_mic_module", Context.MODE_PRIVATE);
+            float micBoost = prefs.getFloat("mic_boost", 1.0f);
+            boolean boostFile = prefs.getBoolean("boost_file", false);
+            float gateThreshold = prefs.getFloat("gate_threshold", -40.0f);
+            float compThreshold = prefs.getFloat("comp_threshold", -20.0f);
+            float compRatio = prefs.getFloat("comp_ratio", 4.0f);
+            
+            android.database.MatrixCursor cursor = new android.database.MatrixCursor(
+                new String[]{"mic_boost", "boost_file", "gate_threshold", "comp_threshold", "comp_ratio"});
+            cursor.addRow(new Object[]{micBoost, boostFile ? 1 : 0, gateThreshold, compThreshold, compRatio});
+            return cursor;
+        }
         return null;
     }
 

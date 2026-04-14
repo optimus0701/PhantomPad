@@ -20,6 +20,7 @@
 #endif
 
 #include "PhantomBridge.h"
+#include "MicDSP.h"
 #include "hook_compat.h"
 
 struct UnknownArgs {
@@ -50,6 +51,12 @@ int g_last_format_session = -1;
 // Fallback if WebRTC bypasses set entirely.
 std::atomic<int> g_cached_sample_rate{0};
 std::atomic<int> g_cached_channel_mask{0};
+
+// Whether to also apply mic boost to file audio playback
+std::atomic<bool> g_boost_file{false};
+
+// Professional DSP chain for mic boost (Noise Gate → Compressor → Gain → Limiter)
+MicDSP g_mic_dsp;
 
 // Track primary AudioRecord instance — Discord creates multiple instances
 // that all call obtainBuffer. We must only feed audio to ONE to prevent
@@ -119,7 +126,15 @@ int32_t  obtainBuffer_hook(void* v0, void* v1, void* v2, void* v3, void* v4) {
         }
     }
 
-    if (g_phantomBridge->overwrite_buffer_peek(raw, size) && need_log > 0) {
+    // Apply professional DSP chain to raw microphone audio
+    if (g_phantomBridge != nullptr) {
+        g_mic_dsp.process(raw, size, g_phantomBridge->getAudioFormat());
+    }
+
+    // Pass boost info to file playback so it can optionally apply boost to file audio too
+    float current_boost = g_mic_dsp.getBoost();
+    float file_boost = (g_boost_file.load() && current_boost > 1.0f) ? current_boost : 1.0f;
+    if (g_phantomBridge->overwrite_buffer_peek(raw, size, file_boost) && need_log > 0) {
         LOGI("Overwritten data");
     }
 
@@ -235,6 +250,9 @@ int32_t set_hook(void* thiz, int32_t inputSource, uint32_t sampleRate, uint32_t 
     g_cached_sample_rate.store((int)sampleRate);
     g_cached_channel_mask.store((int)channelMask);
 
+    // Update DSP chain sample rate for correct filter coefficients
+    g_mic_dsp.setSampleRate((float)sampleRate);
+
     JNIEnv* env = nullptr;
     bool attached = attach_env(&env);
     
@@ -320,6 +338,36 @@ Java_com_optimus0701_phantompad_PhantomManager_nativeSetMixAudio(JNIEnv *env, jo
     if (g_phantomBridge != nullptr) {
         g_phantomBridge->set_mix_audio(mix_audio);
     }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetMicBoost(JNIEnv *env, jobject thiz, jfloat boost) {
+    g_mic_dsp.setBoost(boost);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetBoostFile(JNIEnv *env, jobject thiz, jboolean enabled) {
+    g_boost_file.store(enabled);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetGateThreshold(JNIEnv *env, jobject thiz, jfloat db) {
+    g_mic_dsp.setGateThresholdDb(db);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetCompThreshold(JNIEnv *env, jobject thiz, jfloat db) {
+    g_mic_dsp.setCompThresholdDb(db);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_optimus0701_phantompad_PhantomManager_nativeSetCompRatio(JNIEnv *env, jobject thiz, jfloat ratio) {
+    g_mic_dsp.setCompRatio(ratio);
 }
 
 extern "C"

@@ -7,12 +7,71 @@
     <string name="btn_refresh">Refresh</string>
     <string name="opt_mix_audio">Play and Mix Mic</string>
     <string name="opt_mix_audio_desc">Injects audio while keeping your microphone active</string>
-    <string name="user_login">Login</string>
-    <string name="user_signup">Sign Up</string>
-    <string name="user_premium_status">Premium Status: Free</string>
-    <string name="user_switch_language">Switch Language (VNN)</string>
-    <string name="user_welcome">Welcome to PhantomPad</string>
-    
     <string name="opt_play_local">Hear While Playing</string>
     <string name="opt_play_local_desc">Plays the audio locally on your device while injecting it</string>
+    <string name="opt_mic_boost">Microphone Gain</string>
+    <string name="opt_mic_boost_desc">Amplify your actual microphone recording output.</string>
+    <string name="opt_boost_file">Boost File Audio</string>
+    <string name="opt_boost_file_desc">Apply microphone gain boost to file audio playback through mic as well.</string>
+    <string name="opt_advanced_audio">⚙ Advanced Audio Settings</string>
+    <string name="opt_gate_threshold">Noise Gate Threshold</string>
+    <string name="opt_gate_threshold_desc">Mute audio below this level to remove background noise.</string>
+    <string name="opt_comp_threshold">Compressor Threshold</string>
+    <string name="opt_comp_threshold_desc">Start compressing audio above this level.</string>
+    <string name="opt_comp_ratio">Compressor Ratio</string>
+    <string name="opt_comp_ratio_desc">Higher ratio = stronger compression. 4:1 recommended for voice.</string>
+
+    <!-- User Fragment -->
+    <string name="user_login">Login</string>
+    <string name="user_signup">Sign Up</string>
+    <string name="user_logout">Logout</string>
+    <string name="user_premium_status">Premium Status: Free</string>
+    <string name="user_switch_language">Switch Language (VN)</string>
+    <string name="user_welcome">Welcome to PhantomPad</string>
+    <string name="user_password">Password</string>
+    <string name="user_new_password">New Password</string>
+    <string name="user_display_name">Display Name</string>
+    <string name="user_forgot_password">Forgot Password?</string>
+    <string name="user_forgot_password_desc">Enter your email to receive a password reset code.</string>
+    <string name="user_send_otp">Send Code</string>
+    <string name="user_verify_otp">Verify OTP</string>
+    <string name="user_verify">Verify</string>
+    <string name="user_cancel">Cancel</string>
+    <string name="user_reset_password">Reset Password</string>
+    <string name="user_reset">Reset</string>
+    <string name="user_otp_code">OTP Code</string>
+    <string name="user_otp_sent">An OTP has been sent to %1$s. Please check your email.</string>
+    <string name="user_otp_invalid">Please enter a valid 6-digit OTP</string>
+    <string name="user_fill_all">Please fill in all required fields</string>
+    <string name="user_password_min">Password must be at least 8 characters</string>
+    <string name="user_password_hint">Min 8 chars, uppercase, lowercase, digit, special char</string>
+    <string name="user_login_success">Login successful!</string>
+    <string name="user_signup_success">Account created! 3-day Premium trial activated 🎉</string>
+    <string name="user_password_reset_success">Password has been reset successfully</string>
+    <string name="user_logged_out">Logged out</string>
+    <string name="user_premium_title">Premium Status</string>
+    <string name="user_premium_active">✨ Premium Active</string>
+    <string name="user_premium_expired">Free Plan</string>
+    <string name="user_premium_until">Expires: %1$s</string>
+    <string name="user_buy_premium">⭐ Upgrade to Premium</string>
+    <string name="user_premium_required">⭐ Premium required to use this feature</string>
+    <string name="user_login_required">Please log in to use this feature</string>
+
+    <!-- Auth UI - New -->
+    <string name="user_email_hint">Enter email or username</string>
+    <string name="user_confirm_password">Confirm Password</string>
+    <string name="user_remember_me">Remember me</string>
+    <string name="user_sign_in">Sign In</string>
+    <string name="user_sign_up">Sign Up</string>
+    <string name="user_or">-OR-</string>
+    <string name="user_back">Back</string>
+    <string name="user_login_desc">Sign in to sync your settings and unlock premium features across devices.</string>
+
+    <!-- Password Validation Errors -->
+    <string name="user_password_error_length">Password must be at least 8 characters</string>
+    <string name="user_password_error_uppercase">Must contain at least one uppercase letter</string>
+    <string name="user_password_error_lowercase">Must contain at least one lowercase letter</string>
+    <string name="user_password_error_digit">Must contain at least one digit</string>
+    <string name="user_password_error_special">Must contain at least one special character (!@#$%^&amp;*)</string>
+    <string name="user_password_error_mismatch">Passwords do not match</string>
 </resources>

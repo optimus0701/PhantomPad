@@ -16,3 +16,5 @@ local.properties
 app/release
 *log*.txt
 log*.txt
+*.log
+*.txt

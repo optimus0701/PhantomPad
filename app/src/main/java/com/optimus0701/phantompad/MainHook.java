@@ -52,6 +52,7 @@ public class MainHook implements IXposedHookLoadPackage {
         });
 
         XposedHelpers.findAndHookMethod("android.media.AudioRecord", lpparam.classLoader, "startRecording", new XC_MethodHook() {
+            @android.annotation.SuppressLint("SoonBlockedPrivateApi")
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 android.media.AudioRecord record = (android.media.AudioRecord) param.thisObject;
@@ -225,8 +226,42 @@ public class MainHook implements IXposedHookLoadPackage {
             values.put("package", packageName);
             context.getContentResolver().insert(uri, values);
             Logger.d("MainHook: Registered package with module");
+
+            // Fetch settings from Provider
+            android.net.Uri queryUri = android.net.Uri.parse("content://com.optimus0701.phantompad.provider/" + packageName);
+            android.database.Cursor cursor = context.getContentResolver().query(queryUri, null, null, null, null);
+            if (cursor != null) {
+                    if (cursor.moveToFirst()) {
+                        float micBoost = cursor.getFloat(0);
+                        phantomManager.setMicBoost(micBoost);
+                        Logger.d("MainHook: Restored mic_boost: " + micBoost);
+                        // Restore boost_file setting (column index 1)
+                        if (cursor.getColumnCount() > 1) {
+                            boolean boostFile = cursor.getInt(1) == 1;
+                            phantomManager.setBoostFile(boostFile);
+                            Logger.d("MainHook: Restored boost_file: " + boostFile);
+                        }
+                        // Restore DSP settings (columns 2-4)
+                        if (cursor.getColumnCount() > 2) {
+                            float gateThreshold = cursor.getFloat(2);
+                            phantomManager.setGateThreshold(gateThreshold);
+                            Logger.d("MainHook: Restored gate_threshold: " + gateThreshold);
+                        }
+                        if (cursor.getColumnCount() > 3) {
+                            float compThreshold = cursor.getFloat(3);
+                            phantomManager.setCompThreshold(compThreshold);
+                            Logger.d("MainHook: Restored comp_threshold: " + compThreshold);
+                        }
+                        if (cursor.getColumnCount() > 4) {
+                            float compRatio = cursor.getFloat(4);
+                            phantomManager.setCompRatio(compRatio);
+                            Logger.d("MainHook: Restored comp_ratio: " + compRatio);
+                        }
+                    }
+                cursor.close();
+            }
         } catch (Exception e) {
-            Logger.d("MainHook: Failed to register hook scope: " + e.getMessage());
+            Logger.d("MainHook: Failed to register hook scope or fetch settings: " + e.getMessage());
         }
 
         try {
@@ -260,6 +295,26 @@ public class MainHook implements IXposedHookLoadPackage {
                         Logger.d("MainHook: Stopping audio...");
                         phantomManager.setPaused(false);
                         phantomManager.unload();
+                    } else if ("set_mic_boost".equals(cmd)) {
+                        float boost = intent.getFloatExtra("boost", 1.0f);
+                        phantomManager.setMicBoost(boost);
+                        Logger.d("MainHook: Setting mic boost to " + boost);
+                    } else if ("set_boost_file".equals(cmd)) {
+                        boolean enabled = intent.getBooleanExtra("enabled", false);
+                        phantomManager.setBoostFile(enabled);
+                        Logger.d("MainHook: Setting boost_file to " + enabled);
+                    } else if ("set_gate_threshold".equals(cmd)) {
+                        float db = intent.getFloatExtra("db", -40.0f);
+                        phantomManager.setGateThreshold(db);
+                        Logger.d("MainHook: Setting gate_threshold to " + db);
+                    } else if ("set_comp_threshold".equals(cmd)) {
+                        float db = intent.getFloatExtra("db", -20.0f);
+                        phantomManager.setCompThreshold(db);
+                        Logger.d("MainHook: Setting comp_threshold to " + db);
+                    } else if ("set_comp_ratio".equals(cmd)) {
+                        float ratio = intent.getFloatExtra("ratio", 4.0f);
+                        phantomManager.setCompRatio(ratio);
+                        Logger.d("MainHook: Setting comp_ratio to " + ratio);
                     }
                 }
             };

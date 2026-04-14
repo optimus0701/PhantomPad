@@ -7,4 +7,16 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Auth UI Colors -->
+    <color name="auth_card_bg">#FFFFFFFF</color>
+    <color name="auth_card_stroke">#1A000000</color>
+    <color name="tab_container_bg">#1A6200EE</color>
+    <color name="tab_container_stroke">#336200EE</color>
+    <color name="tab_unselected_text">#FF6200EE</color>
+    <color name="gradient_start">#FF6200EE</color>
+    <color name="gradient_end">#FF3700B3</color>
+    <color name="button_gradient_start">#FFE91E63</color>
+    <color name="button_gradient_end">#FFFF5722</color>
+    <color name="error_red">#FFD32F2F</color>
 </resources>

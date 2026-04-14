@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Auth UI Colors (Night Mode) -->
+    <color name="auth_card_bg">#FF1E1E2E</color>
+    <color name="auth_card_stroke">#33FFFFFF</color>
+    <color name="tab_container_bg">#1AFFFFFF</color>
+    <color name="tab_container_stroke">#33FFFFFF</color>
+    <color name="tab_unselected_text">#B3FFFFFF</color>
+    <!-- Use a deeper purple for dark mode -->
+    <color name="gradient_start">#FF4A00B3</color>
+    <color name="gradient_end">#FF21006B</color>
+</resources>

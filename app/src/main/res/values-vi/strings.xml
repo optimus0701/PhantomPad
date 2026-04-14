@@ -8,12 +8,71 @@
     <string name="btn_refresh">Cập nhật</string>
     <string name="opt_mix_audio">Phát và thu mic cùng lúc</string>
     <string name="opt_mix_audio_desc">Trộn nhạc vào luồng mic đang thu thay vì ghi đè hoàn toàn</string>
+    <string name="opt_play_local">Phát và nghe cùng lúc</string>
+    <string name="opt_play_local_desc">Phát âm thanh trên loa thiết bị trong khi truyền vào Mic</string>
+    <string name="opt_mic_boost">Độ lợi Microphone (Mic Boost)</string>
+    <string name="opt_mic_boost_desc">Khuếch đại độ lớn âm thanh ghi từ Mic thực của bạn. Kéo lên nếu bên kia nghe bạn quá nhỏ.</string>
+    <string name="opt_boost_file">Boost cho File phát qua Mic</string>
+    <string name="opt_boost_file_desc">Áp dụng khuếch đại Mic Boost cho cả file nhạc phát qua Mic (không chỉ giọng nói).</string>
+    <string name="opt_advanced_audio">⚙ Cài đặt âm thanh nâng cao</string>
+    <string name="opt_gate_threshold">Ngưỡng Noise Gate</string>
+    <string name="opt_gate_threshold_desc">Tắt tiếng khi âm thanh dưới mức này để loại bỏ nhiễu nền.</string>
+    <string name="opt_comp_threshold">Ngưỡng nén (Compressor)</string>
+    <string name="opt_comp_threshold_desc">Bắt đầu nén âm thanh khi vượt mức này.</string>
+    <string name="opt_comp_ratio">Tỷ lệ nén</string>
+    <string name="opt_comp_ratio_desc">Tỷ lệ càng cao = nén càng mạnh. Khuyến nghị 4:1 cho giọng nói.</string>
+
+    <!-- User Fragment -->
     <string name="user_login">Đăng nhập</string>
     <string name="user_signup">Đăng ký</string>
+    <string name="user_logout">Đăng xuất</string>
     <string name="user_premium_status">Trạng thái Premium: Miễn phí</string>
     <string name="user_switch_language">Đổi ngôn ngữ (ENG)</string>
     <string name="user_welcome">Chào mừng đến với PhantomPad</string>
-    
-    <string name="opt_play_local">Phát và nghe cùng lúc</string>
-    <string name="opt_play_local_desc">Phát âm thanh trên loa thiết bị trong khi truyền vào Mic</string>
+    <string name="user_password">Mật khẩu</string>
+    <string name="user_new_password">Mật khẩu mới</string>
+    <string name="user_display_name">Tên hiển thị</string>
+    <string name="user_forgot_password">Quên mật khẩu?</string>
+    <string name="user_forgot_password_desc">Nhập email để nhận mã đặt lại mật khẩu.</string>
+    <string name="user_send_otp">Gửi mã</string>
+    <string name="user_verify_otp">Xác thực OTP</string>
+    <string name="user_verify">Xác thực</string>
+    <string name="user_cancel">Hủy</string>
+    <string name="user_reset_password">Đặt lại mật khẩu</string>
+    <string name="user_reset">Đặt lại</string>
+    <string name="user_otp_code">Mã OTP</string>
+    <string name="user_otp_sent">Mã OTP đã được gửi đến %1$s. Vui lòng kiểm tra email.</string>
+    <string name="user_otp_invalid">Vui lòng nhập mã OTP 6 chữ số hợp lệ</string>
+    <string name="user_fill_all">Vui lòng điền đầy đủ thông tin</string>
+    <string name="user_password_min">Mật khẩu phải có ít nhất 8 ký tự</string>
+    <string name="user_password_hint">Tối thiểu 8 ký tự, chữ hoa, chữ thường, số, ký tự đặc biệt</string>
+    <string name="user_login_success">Đăng nhập thành công!</string>
+    <string name="user_signup_success">Tạo tài khoản thành công! 3 ngày Premium miễn phí 🎉</string>
+    <string name="user_password_reset_success">Mật khẩu đã được đặt lại thành công</string>
+    <string name="user_logged_out">Đã đăng xuất</string>
+    <string name="user_premium_title">Trạng thái Premium</string>
+    <string name="user_premium_active">✨ Premium đang hoạt động</string>
+    <string name="user_premium_expired">Gói miễn phí</string>
+    <string name="user_premium_until">Hết hạn: %1$s</string>
+    <string name="user_buy_premium">⭐ Nâng cấp Premium</string>
+    <string name="user_premium_required">⭐ Yêu cầu Premium để sử dụng tính năng này</string>
+    <string name="user_login_required">Vui lòng đăng nhập để sử dụng tính năng này</string>
+
+    <!-- Auth UI - New -->
+    <string name="user_email_hint">Nhập email hoặc tên đăng nhập</string>
+    <string name="user_confirm_password">Xác nhận mật khẩu</string>
+    <string name="user_remember_me">Ghi nhớ đăng nhập</string>
+    <string name="user_sign_in">Đăng nhập</string>
+    <string name="user_sign_up">Đăng ký</string>
+    <string name="user_or">-HOẶC-</string>
+    <string name="user_back">Quay lại</string>
+    <string name="user_login_desc">Đăng nhập để đồng bộ cài đặt và mở khóa tính năng Premium trên các thiết bị.</string>
+
+    <!-- Password Validation Errors -->
+    <string name="user_password_error_length">Mật khẩu phải có ít nhất 8 ký tự</string>
+    <string name="user_password_error_uppercase">Phải chứa ít nhất một chữ cái viết hoa</string>
+    <string name="user_password_error_lowercase">Phải chứa ít nhất một chữ cái viết thường</string>
+    <string name="user_password_error_digit">Phải chứa ít nhất một chữ số</string>
+    <string name="user_password_error_special">Phải chứa ít nhất một ký tự đặc biệt (!@#$%^&amp;*)</string>
+    <string name="user_password_error_mismatch">Mật khẩu không khớp</string>
 </resources>

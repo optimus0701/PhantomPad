@@ -125,7 +125,9 @@ void PhantomBridge::mix_or_copy(char* dst_raw, const char* src_raw, int size, bo
 
     // Mix mode: add our audio on top of mic data with Soft Clipping (Audio Limiter)
     // Threshold: 0.90 (starts compressing softly above 90% volume to prevent harsh digital clipping)
+    // K = 1.0 / (1.0 - THRESHOLD) = 10.0 — ensures output never exceeds ±1.0
     const float THRESHOLD = 0.90f;
+    const float K = 10.0f;
 
     if (mAudioFormat == 0x5u) {
         float* dst = reinterpret_cast<float*>(dst_raw);
@@ -137,7 +139,7 @@ void PhantomBridge::mix_or_copy(char* dst_raw, const char* src_raw, int size, bo
             if (abs_val > THRESHOLD) {
                 // Mathematical soft clipper: asymptotic curve approaching 1.0
                 float over = abs_val - THRESHOLD;
-                val = (val > 0 ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * 2.0f));
+                val = (val > 0 ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * K));
             }
             dst[i] = val;
         }
@@ -150,7 +152,7 @@ void PhantomBridge::mix_or_copy(char* dst_raw, const char* src_raw, int size, bo
             float abs_val = std::abs(val);
             if (abs_val > THRESHOLD) {
                 float over = abs_val - THRESHOLD;
-                val = (val > 0.0f ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * 2.0f));
+                val = (val > 0.0f ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * K));
             }
             int32_t final_val = (int32_t)(val * 32767.0f);
             if (final_val > 32767) final_val = 32767;
@@ -160,7 +162,7 @@ void PhantomBridge::mix_or_copy(char* dst_raw, const char* src_raw, int size, bo
     }
 }
 
-bool PhantomBridge::overwrite_buffer_peek(char* buffer, int size) {
+bool PhantomBridge::overwrite_buffer_peek(char* buffer, int size, float file_boost) {
     if (!m_playing_live.load() || m_paused.load()) return false;
 
     long long read_pos = m_buffer_read_position.load();
@@ -185,12 +187,57 @@ bool PhantomBridge::overwrite_buffer_peek(char* buffer, int size) {
     if (bytes_to_copy <= 0) return false;
 
     int pos = read_pos % (long long)m_buffer_size;
-    if (pos + bytes_to_copy <= m_buffer_size) {
-        mix_or_copy(buffer, (char*)m_buffer + pos, bytes_to_copy, m_mix_audio);
+
+    // Apply mic boost to file audio if requested (amplify before mixing)
+    if (file_boost > 1.0f) {
+        // We need a temp buffer to apply boost before mix_or_copy
+        // For non-mix mode, we can boost in-place after copy
+        if (pos + bytes_to_copy <= m_buffer_size) {
+            mix_or_copy(buffer, (char*)m_buffer + pos, bytes_to_copy, m_mix_audio);
+        } else {
+            int first_part = m_buffer_size - pos;
+            mix_or_copy(buffer, (char*)m_buffer + pos, first_part, m_mix_audio);
+            mix_or_copy(buffer + first_part, (char*)m_buffer, bytes_to_copy - first_part, m_mix_audio);
+        }
+        // Apply boost + soft-clip to the final output
+        const float THRESHOLD = 0.90f;
+        const float K = 10.0f;
+        if (mAudioFormat == 0x5u) {
+            float* dst = reinterpret_cast<float*>(buffer);
+            size_t count = bytes_to_copy / sizeof(float);
+            for (size_t i = 0; i < count; ++i) {
+                float val = dst[i] * file_boost;
+                float abs_val = std::abs(val);
+                if (abs_val > THRESHOLD) {
+                    float over = abs_val - THRESHOLD;
+                    val = (val > 0.0f ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * K));
+                }
+                dst[i] = val;
+            }
+        } else {
+            int16_t* dst = reinterpret_cast<int16_t*>(buffer);
+            size_t count = bytes_to_copy / sizeof(int16_t);
+            for (size_t i = 0; i < count; ++i) {
+                float val = ((float)dst[i] / 32768.0f) * file_boost;
+                float abs_val = std::abs(val);
+                if (abs_val > THRESHOLD) {
+                    float over = abs_val - THRESHOLD;
+                    val = (val > 0.0f ? 1.0f : -1.0f) * (THRESHOLD + over / (1.0f + over * K));
+                }
+                int32_t final_val = (int32_t)(val * 32767.0f);
+                if (final_val > 32767) final_val = 32767;
+                else if (final_val < -32768) final_val = -32768;
+                dst[i] = (int16_t)final_val;
+            }
+        }
     } else {
-        int first_part = m_buffer_size - pos;
-        mix_or_copy(buffer, (char*)m_buffer + pos, first_part, m_mix_audio);
-        mix_or_copy(buffer + first_part, (char*)m_buffer, bytes_to_copy - first_part, m_mix_audio);
+        if (pos + bytes_to_copy <= m_buffer_size) {
+            mix_or_copy(buffer, (char*)m_buffer + pos, bytes_to_copy, m_mix_audio);
+        } else {
+            int first_part = m_buffer_size - pos;
+            mix_or_copy(buffer, (char*)m_buffer + pos, first_part, m_mix_audio);
+            mix_or_copy(buffer + first_part, (char*)m_buffer, bytes_to_copy - first_part, m_mix_audio);
+        }
     }
 
     // REMOVED: m_buffer_read_position.fetch_add(bytes_to_copy);

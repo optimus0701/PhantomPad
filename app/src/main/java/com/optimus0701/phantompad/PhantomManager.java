@@ -170,11 +170,36 @@ public class PhantomManager {
         nativeSetMixAudio(mixAudio);
     }
 
+    public void setMicBoost(float boost) {
+        nativeSetMicBoost(boost);
+    }
+
+    public void setBoostFile(boolean enabled) {
+        nativeSetBoostFile(enabled);
+    }
+
+    public void setGateThreshold(float db) {
+        nativeSetGateThreshold(db);
+    }
+
+    public void setCompThreshold(float db) {
+        nativeSetCompThreshold(db);
+    }
+
+    public void setCompRatio(float ratio) {
+        nativeSetCompRatio(ratio);
+    }
+
     public void setPaused(boolean paused) {
         nativeSetPaused(paused);
     }
 
     public native void nativeSetMixAudio(boolean mixAudio);
+    public native void nativeSetMicBoost(float boost);
+    public native void nativeSetBoostFile(boolean enabled);
+    public native void nativeSetGateThreshold(float db);
+    public native void nativeSetCompThreshold(float db);
+    public native void nativeSetCompRatio(float ratio);
     public native void nativeSetPaused(boolean paused);
     public native void nativeClearBuffer();
     private native void nativeHook();
